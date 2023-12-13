@@ -38,6 +38,12 @@ _masks =["/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre
 sgmnt_root="/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil_ided_predictions/sgmnt"
 
 
+pred_images = ["/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil/prediction_img/"+ doc for doc in os.listdir("/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil/prediction_img")]
+pred_masks = ["/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil/prediction_msk/"+ doc for doc in os.listdir("/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil/prediction_msk")]
+
+
+pred_root="/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/Boleil"
+
 def initial():
     masks.sort()
     images.sort()
@@ -45,6 +51,8 @@ def initial():
     v_images.sort()
     _masks.sort()
     _images.sort()
+    pred_masks.sort()
+    pred_images.sort()
 
 def non_stretching_resize(img ,cmap ,desired_size=512):
 
@@ -71,6 +79,31 @@ def segment(img, msk):
     image[msk < 0.3] = 0
     return image
 
+def load_pred(batch=0):
+  initial()
+  pred_msk_samples={}
+  pred_sgmnt_samples={}
+  start = 50 * batch
+  end=start + 50
+
+  if end>len(pred_masks):
+   end=len(pred_masks)
+
+  for i in range(batch*50,batch*50+50):
+
+    msk_= np.asarray(Image.open(os.path.join(pred_root,pred_masks[i])).convert('L'))
+
+    #####diff lines for ensuring right format #######
+    threshold_value = 128
+    msk_ = (msk_ > threshold_value).astype(int)
+    #################################################
+    pred_msk_samples[pred_masks[i]]=msk_
+    img_= np.asarray(Image.open(os.path.join(pred_root,pred_images[i])))
+    pred_sgmnt_samples[pred_images[i]]=img_
+
+    print("\r"+str(i)+"/"+str(len(images)),end="")
+
+  return pred_msk_samples,pred_sgmnt_samples
 def load_batch(batch=0):
     initial()
     msk_samples = {}
@@ -115,7 +148,6 @@ def load_batch(batch=0):
         #    sgmnt_samples[sgmnts[i]]=sgm_
         print("\r" + str(i) + "/" + str(len(_images)), end="")
     return msk_samples, img_samples, sgmnt_samples
-
 
 def cropping_bounds(img):
     """
@@ -202,6 +234,13 @@ def fitted_line(msk_sample,plot=True,scatter=False,ax_rotation=False):
   """
   contours, hierarchy = cv2.findContours(msk_sample, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
   rows, cols = msk_sample.shape
+
+  if not contours:  #### added verification
+      print("No contours found.")
+      plt.imshow(msk_sample, cmap="gray")
+      plt.show()
+      return None, None
+  contours = sorted(contours, key=cv2.contourArea, reverse=True)  ###added verification
 
   # Calculate endpoints of the line
   vx, vy, x, y = cv2.fitLine(contours[0], cv2.DIST_L2, 0, 0.01, 0.01)
@@ -497,14 +536,18 @@ def sheer(msk,sgm,normalized=False,normalize=True):
 def rigid_registration_test():
     print("rigid registration test")
     initial()
-    msk_samples, img_samples, sgmnt_samples= load_batch(BATCH)
-    #plot_unwrap_curve(msk_samples,sgmnt_samples)
-    #plot_affine_transform_sgmnt(msk_samples,sgmnt_samples)
-    #plot_OpenCV_contour_results(msk_samples)
-    #plot_curve_detect_approx_polygone(msk_samples,sgmnt_samples)
-    #plot_msk_approx_polygone(msk_samples)
+    ###msk_samples, img_samples, sgmnt_samples= load_batch(BATCH)
+
+    msk_samples,sgmnt_samples= load_pred(BATCH) ## loaded predictions with correct format enforced
+    plot_affine_transform_sgmnt(msk_samples,sgmnt_samples)
     #plot_affine_transform_msk(msk_samples,sgmnt_samples)
-    plot_affine_transform_msk_sgmnt(msk_samples,sgmnt_samples)
+    #plot_affine_transform_msk_sgmnt(msk_samples,sgmnt_samples)
+
+    #### curved salamander opretations####
+    #plot_unwrap_curve(msk_samples,sgmnt_samples)
+    # plot_OpenCV_contour_results(msk_samples)
+    # plot_curve_detect_approx_polygone(msk_samples,sgmnt_samples)
+    # plot_msk_approx_polygone(msk_samples)
 
 ################################### - PLOTS - #######################################
 ################################### - PLOTS - #######################################
@@ -515,7 +558,7 @@ def rigid_registration_test():
 def plot_affine_transform_sgmnt(msk_samples, sgmnt_samples):
     # run transformations on segments : rotate and scale and translation
 
-    for sample, segm in zip(msk_samples, sgmnt_samples):
+    for sample, segm in zip(msk_samples.values(), sgmnt_samples.values()):
         # resize to 256,256
         to_resize = Image.fromarray((sample * 255).astype(np.uint8))
         sample = np.array(non_stretching_resize(to_resize, "L"))
@@ -575,10 +618,18 @@ def plot_affine_transform_msk_sgmnt(msk_samples, sgmnt_samples):
 
         segm_key_id= segm_key.split("/")[-1]
         sample_key_id= sample_key.split("/")[-1]
-
         # resize to 256,256
         to_resize = Image.fromarray((sample * 255).astype(np.uint8))
         sample = np.array(non_stretching_resize(to_resize, "L"))
+
+        ######### diff lines to ensure right format ############
+        threshold_value = 128
+        sample = (sample > threshold_value).astype(np.uint8)
+
+        if np.sum(sample) == 0:
+            continue
+        #######################################################
+
         to_resize2 = Image.fromarray((segm * 1).astype(np.uint8))
         segm = np.array(non_stretching_resize(to_resize2, "RGB"))
 
@@ -729,7 +780,6 @@ def plot_affine_transform_msk_sgmnt(msk_samples, sgmnt_samples):
 
         plt.tight_layout()
 
-
 def plot_affine_transform_msk(msk_samples,sgmnt_samples):
     # run transformations on samples : rotate and scale and translation
 
@@ -738,6 +788,12 @@ def plot_affine_transform_msk(msk_samples,sgmnt_samples):
         to_resize = Image.fromarray((sample * 255).astype(np.uint8))
         sample = np.array(non_stretching_resize(to_resize, "L"))
 
+        ######### diff lines to ensure right format ############
+        threshold_value = 128
+        sample = (sample > threshold_value).astype(np.uint8)
+        if np.sum(sample) == 0:
+            continue
+        #######################################################
         # rotate image
         start, end = fitted_line(sample, False)
         rotated_img = apply_rotate_img(sample)

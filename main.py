@@ -33,7 +33,7 @@ print("Available memory:", psutil._common.bytes2human(memory.available))
 ## data must be availalbe for the code to work as each step requires loading a batch of images to run on
 
 
-#rigid_registration_test()
+rigid_registration_test()
 
 #run_Kmeans(True,False,0)
 
