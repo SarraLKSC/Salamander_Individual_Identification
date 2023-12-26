@@ -1,13 +1,17 @@
 
 import os
+import matplotlib
+import matplotlib.pyplot as plt
+
 from Segmentation.Plots import *
 import numpy as np
 import tensorflow as tf
 from PIL import ImageOps,Image
-import tensorflow_datasets as tfds
+#import tensorflow_datasets as tfds
 from pillow_heif import register_heif_opener
 from tensorflow.keras import Model,optimizers,layers
 from tensorflow.keras import backend as K
+from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing.image import array_to_img, load_img
 from tensorflow.keras.layers import Conv2D,Conv2DTranspose,MaxPooling2D,Dropout,Concatenate,Input
@@ -236,3 +240,106 @@ def train_unet():
     display_learning_curves(model_history)
     u_net.evaluate(x, y)
     u_net.evaluate(v_x, v_y)
+def remove_outliers(mask, min_size=100):#from notebook "segmented_model"
+    mask = (mask * 255).astype(np.uint8)
+
+    # Find connected components in the mask
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+    # Filter out small regions
+    filtered_mask = np.zeros_like(mask)
+    for label in range(1, num_labels):
+        area = stats[label, cv2.CC_STAT_AREA]
+        if area >= min_size:
+            filtered_mask[labels == label] = 255
+    return filtered_mask
+
+
+def dilation(msk): #from notebook "segmented_model"
+
+    msk = (msk * 255).astype(np.uint8)
+
+    disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    img = cv2.dilate(msk, disk)
+
+    return img
+def run_trained_model(path_model=None,path_image=None,return_result=False):
+    """
+        run_trained_model runs the inference of the trained model on the chosen image.
+        path_model: if the parameter is provided the model is loaded from that path; if path_model is set to None the default model is loaded
+        path_image:if the parameter is provided the image is loaded from that path; if path_image is set to None the default image is loaded
+        return_result: if False the segmented salamander is displayed but not returned; if True the function returns the predicted mask and segmented body
+    """
+
+    # Load the saved model and specify the custom loss function
+
+    if path_model == None:
+        default_model_path="/Users/sarralaksaci/Desktop/SINF2M/TFE/u_net_upright_data-2.h5"
+        with tf.keras.utils.custom_object_scope({'dice_coef_loss': dice_coef_loss, 'dice_coef': dice_coef}):
+            loaded_model = load_model(default_model_path)
+    else:
+        with tf.keras.utils.custom_object_scope({'dice_coef_loss': dice_coef_loss, 'dice_coef': dice_coef}):
+            loaded_model = load_model(path_model)
+    #load the image
+
+    if path_image==None:
+        default_image_path="/Users/sarralaksaci/Desktop/SINF2M/TFE/data/updated_upright_salamandre_data/boleil_annotated/images/022.JPG"
+        original = Image.open(default_image_path)
+        original = np.asarray(non_stretching_resize(original, "RGB",256)) / 255.
+        original = np.array(original)
+        print(original.shape)
+    else:
+        original = Image.open(path_image)
+        original = np.asarray(non_stretching_resize(original, "RGB",256)) / 255.
+        original = np.array(original)
+
+
+    mask = loaded_model.predict(np.expand_dims(original, axis=0))
+
+    filtered_mask = remove_outliers(mask[0], min_size=100)
+    mask = dilation(mask[0])
+
+    segmented = np.squeeze(original).copy()
+    segmented[np.squeeze(mask) < 0.3] = 0
+    binary_mask = (mask > 148).astype(np.uint8)
+
+    filtered_segmented = np.squeeze(original).copy()
+    filtered_segmented[np.squeeze(filtered_mask) < 0.3] = 0
+
+
+    #print(" original image shape {} \n segmented image shape {} \n mask shape {} \n binary_mask shape {}".format(
+     #   original.shape, segmented.shape, mask.shape, binary_mask.shape))
+
+    ##### Plot the results like in the notebook
+    plt.imshow(filtered_segmented,cmap="gray")
+    plt.show()
+
+    fig = plt.figure(figsize=(8, 6))
+
+    plt.subplot(1, 4, 1)
+    plt.imshow(np.squeeze(original))
+    plt.title("image")
+    plt.axis("off")
+
+    plt.subplot(1, 4, 2)
+    plt.imshow(filtered_segmented, cmap="gray")
+    plt.title("salamandre")
+    plt.axis("off")
+
+    plt.subplot(1, 4, 3)
+    plt.imshow(binary_mask, cmap="gray")
+    plt.title("binary mask")
+    plt.axis("off")
+
+    plt.subplot(1, 4, 4)
+    plt.imshow(mask, cmap="gray")
+    plt.title("mask")
+    plt.axis("off")
+
+    fig.tight_layout()
+    plt.show()
+    plt.close()
+
+    if return_result:
+        return binary_mask,filtered_segmented
+

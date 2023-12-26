@@ -33,7 +33,19 @@ print("Available memory:", psutil._common.bytes2human(memory.available))
 ## data must be availalbe for the code to work as each step requires loading a batch of images to run on
 
 
-rigid_registration_test()
+#rigid_registration_test()
+#print(tf.__version__)
+## get mask and segmeted body from run_trained_model; set return_result to True for that
+msk,sgmnt=run_trained_model(return_result=True)
+
+## get transformed mask and segmented body from affine_transform_msk_sgmnt
+msk,sgmnt= affine_transform_msk_sgmnt(msk,sgmnt)
+
+plt.imshow(msk,cmap="gray")
+plt.show()
+plt.imshow(sgmnt)
+plt.show()
+
 
 #run_Kmeans(True,False,0)
 

@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from skimage.transform import rotate
-from pillow_heif import register_heif_opener
+#from pillow_heif import register_heif_opener
 from skimage.measure import label, regionprops, regionprops_table
 
 val=False
@@ -59,7 +59,7 @@ def non_stretching_resize(img ,cmap ,desired_size=512):
     old_size= img.size
     ratio= float(desired_size ) /max(old_size)
     new_size =tuple([int(x * ratio) for x in old_size])
-    im = img.resize(new_size, resample=Image.ANTIALIAS)
+    im = img.resize(new_size, resample=Image.LANCZOS)#Image.ANTIALIAS)
 
     new_im = Image.new(cmap, (desired_size, desired_size))
     new_im.paste(im, ((desired_size - new_size[0]) // 2,
@@ -548,11 +548,31 @@ def rigid_registration_test():
     # plot_OpenCV_contour_results(msk_samples)
     # plot_curve_detect_approx_polygone(msk_samples,sgmnt_samples)
     # plot_msk_approx_polygone(msk_samples)
+    plt.close()
 
 ################################### - PLOTS - #######################################
 ################################### - PLOTS - #######################################
 ################################### - PLOTS - #######################################
 ################################### - PLOTS - #######################################
+
+def affine_transform_msk_sgmnt(msk, sgm):
+    """
+    affine_transform_msk_sgmnt runs the affine transformation operations on msk and sgm and returns the resulting images
+    """
+        # rotate image
+    rotated_msk = apply_rotate_img(msk)
+    rotated_sgm = replicate_rotate(sgm, msk)
+
+        # zoom in and crop
+    newminr, newminc, newmaxc, newmaxr = zoom_bounds(rotated_msk, rotated_msk, False)
+    cropped_msk = rotated_msk[int(newminr):int(newmaxr), int(newminc):int(newmaxc)]
+    cropped_sgm = rotated_sgm[int(newminr):int(newmaxr), int(newminc):int(newmaxc)]
+
+        # translate
+    msk_shifted = center_mask(cropped_msk)
+    sgm_shifted = replicate_centering(cropped_sgm, cropped_msk)
+
+    return msk_shifted,sgm_shifted
 
 
 def plot_affine_transform_sgmnt(msk_samples, sgmnt_samples):
